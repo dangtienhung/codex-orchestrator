@@ -46,8 +46,8 @@ Usage:
   codex-agent health                     Check tmux and codex availability
 
 Options:
-  -r, --reasoning <level>    Reasoning effort: low, medium, high, xhigh (default: low)
-  -m, --model <model>        Model name (default: gpt-5.5)
+  -r, --reasoning <level>    Reasoning effort: low, medium, high, xhigh (default: ${config.defaultReasoningEffort})
+  -m, --model <model>        Model name (default: ${config.model})
   -s, --sandbox <mode>       Sandbox: read-only, workspace-write, danger-full-access
   -w, --wait                 Wait for completion before exiting
   --notify-on-complete <cmd>  Run command when job completes

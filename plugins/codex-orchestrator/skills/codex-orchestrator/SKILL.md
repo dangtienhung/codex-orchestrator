@@ -1,6 +1,6 @@
 ---
 name: codex-orchestrator
-description: DEFAULT PIPELINE for all tasks requiring execution. You (Claude) are the strategic orchestrator. Codex agents are your implementation army - hyper-focused coding specialists. Trigger on ANY task involving code, file modifications, codebase research, multi-step work, or implementation. This is NOT optional - Codex agents are the default for all execution work. Only skip if the user explicitly asks you to do something yourself.
+description: Delegate coding work to OpenAI Codex agents (codex-agent CLI via tmux) while Claude orchestrates and reviews. Use ONLY when the user explicitly asks to use/delegate to Codex (e.g. "giao cho codex", "dùng codex", "use codex", "spawn codex agents") or asks to set up codex-orchestrator. Do NOT trigger for ordinary coding tasks - Claude does those itself unless the user asks for Codex. Codex writes the code; Claude always reviews the diff.
 triggers:
   - codex-orchestrator
   - spawn codex
@@ -8,8 +8,9 @@ triggers:
   - delegate to codex
   - start agent
   - codex agent
-  - init
   - setup codex
+  - giao cho codex
+  - dùng codex
 ---
 
 # Codex Orchestrator
@@ -54,9 +55,11 @@ Codex reports to you. You report to the user.
 
 ## CRITICAL RULES
 
-### Rule 1: Codex Agents Are the Default
+### Rule 1: Opt-In, Then Codex Is the Default
 
-For ANY task involving:
+This skill is opt-in: it applies only after the user asks to use Codex. Ordinary requests that do not mention Codex are handled by Claude as usual.
+
+Once the user has asked for Codex, for tasks in that scope involving:
 - Writing or modifying code
 - Researching the codebase
 - Investigating files or patterns
@@ -75,11 +78,12 @@ Your job:
 - Spawn and direct Codex agents
 - Synthesize agent findings
 - Make decisions about approach
+- **Review every code change Codex makes** (see Rule 4)
 - Communicate progress
 
 Not your job:
 - Implementing code yourself
-- Doing extensive file reads to "understand before delegating"
+- Doing extensive file reads to "understand before delegating" (reading the diff to review it IS your job)
 - Using Claude subagents (Task tool) unless the user explicitly asks
 
 ### Rule 3: Only Exceptions
@@ -88,7 +92,18 @@ Use Claude subagents ONLY when:
 - The user explicitly requests it ("you do it", "don't use Codex", "use a Claude subagent")
 - Quick single-file read for conversational context
 
-Otherwise: Codex agents. Always.
+Otherwise (within a Codex-delegated task): Codex agents.
+
+### Rule 4: Codex Writes, Claude Reviews
+
+Codex writes the code; **you (Claude) are the mandatory reviewer**. A different model reviewing catches the blind spots the author model shares with itself, so never let Codex be the only reviewer of Codex's code.
+
+- Before an implementation agent writes files, make sure the working tree is clean (or a branch exists) so the change is an isolated diff.
+- When the agent finishes, review it yourself: `git diff` / `git diff --stat`, read the changed code in context, run typecheck/lint/tests.
+- Check correctness, edge cases, security (input validation, auth, injection, data exposure), error handling, data integrity, and fit with existing patterns.
+- Send concrete fixes back to the same Codex agent (`codex-agent send <id> "..."`), then re-review the new diff. Repeat until clean.
+- A read-only Codex review agent is OPTIONAL extra coverage for large or sensitive changes; its findings are input to your review, never a replacement for it.
+- Never commit or report work as done until you have reviewed it. The user does the final approval.
 
 ## Prerequisites
 
@@ -146,13 +161,13 @@ USER'S REQUEST
      |
 5. IMPLEMENTATION   (Codex, workspace-write)
      |
-6. REVIEW           (Codex, read-only)
+6. REVIEW           (You - mandatory; optional Codex read-only second opinion)
      |
-7. TESTING          (Codex, workspace-write)
+7. TESTING          (Codex, workspace-write; you verify results)
 ```
 
-**You** handle stages 1, 3, 4 - the strategic work.
-**Codex agents** handle stages 2, 5, 6, 7 - the execution work.
+**You** handle stages 1, 3, 4, 6 - the strategic work and code review.
+**Codex agents** handle stages 2, 5, 7 - the execution work.
 
 ### Pipeline Stage Detection
 
@@ -165,7 +180,7 @@ Detect where you are based on context:
 | Agent findings ready, need synthesis | SYNTHESIS | You review, filter, combine |
 | "let's plan", "create PRD", synthesis done | PRD | You write PRD to docs/prds/ |
 | PRD exists, "implement", "build" | IMPLEMENTATION | Spawn workspace-write Codex agents |
-| Implementation done, "review" | REVIEW | Spawn review Codex agents |
+| Implementation done, "review" | REVIEW | You review the diff yourself (Rule 4) |
 | "test", "verify", review passed | TESTING | Spawn test-writing Codex agents |
 
 ## Core Principles
@@ -238,11 +253,11 @@ The CLI ships with strong defaults so most commands need minimal flags:
 
 | Setting | Default | Why |
 |---------|---------|-----|
-| Model | `gpt-5.5` | Full capability model |
-| Reasoning | `low` | Efficient default; raise with `-r high` or `-r xhigh` for harder work |
+| Model | `cx/gpt-6.1-sol` | Full capability model |
+| Reasoning | `high` | Default; use `-r medium`/`-r low` for quick tasks, `-r xhigh` for the hardest work |
 | Sandbox | `workspace-write` | Agents can modify files by default |
 
-You almost never need to override these. The main flags you'll use are `--map` (include codebase context), `-s read-only` (for research tasks), and `-f` (include specific files).
+You almost never need to override these. The main flags you'll use are `--map` (include codebase context) and `-s read-only` (for research tasks). To give an agent specific files, name the paths in the prompt - agents read files themselves.
 
 ## Turn-Aware Orchestration
 
@@ -373,8 +388,8 @@ codex-agent start "Investigate auth flow for vulnerabilities" --map -s read-only
 # Implementation (defaults are perfect - high reasoning, workspace-write)
 codex-agent start "Implement the auth refactor per PRD" --map
 
-# With file context
-codex-agent start "Review these modules" --map -f "src/auth/**/*.ts" -f "src/api/**/*.ts"
+# With file context (name the paths; the agent reads them)
+codex-agent start "Review the modules in src/auth/ and src/api/" --map
 ```
 
 ### Monitoring Agents
@@ -540,46 +555,46 @@ Review PRD with user before implementation.
 Spawn implementation agents with PRD context:
 
 ```bash
-codex-agent start "Implement Phase 1 of docs/prds/auth-refactor.md. Read the PRD first." --map -f "docs/prds/auth-refactor.md"
+codex-agent start "Implement Phase 1 of docs/prds/auth-refactor.md. Read the PRD first." --map
 ```
 
 For large PRDs, implement in phases with separate agents.
 
-### Stage 6: Review (Codex Agents - read-only)
+### Stage 6: Review (You - mandatory)
 
-Spawn parallel review agents:
+Codex wrote the code; you review it. Do this yourself, do not delegate it:
 
 ```bash
-# Security review
-codex-agent start "Security review the changes. Check:
-- OWASP top 10 vulnerabilities
-- Auth bypass possibilities
-- Data exposure risks
-- Input validation
-- SQL/command injection
-Report any security concerns." --map -s read-only
-
-# Error handling review
-codex-agent start "Review error handling in changed files. Check for:
-- Swallowed errors
-- Missing validation
-- Inconsistent patterns
-- Raw errors exposed to clients
-Report any violations." --map -s read-only
-
-# Data integrity review
-codex-agent start "Review for data integrity. Check:
-- Existing data unaffected
-- Database queries properly scoped
-- No accidental data deletion
-- Migrations are additive/safe
-Report any concerns." --map -s read-only
+git status && git diff --stat     # scope of the change
+git diff                          # read every hunk
+# run the project's typecheck / lint / tests
 ```
 
-**After review agents complete:**
-- Synthesize findings
-- Fix any critical issues before commit
-- Note non-critical issues for future
+Check:
+- Correctness against the PRD, edge cases, regressions in existing behavior
+- Security: OWASP top 10, auth bypass, data exposure, input validation, SQL/command injection
+- Error handling: swallowed errors, missing validation, raw errors exposed to clients
+- Data integrity: queries properly scoped, no accidental deletion, migrations additive/safe
+- Consistency with existing patterns and conventions
+
+Send fixes back to the implementing agent and re-review:
+
+```bash
+codex-agent send <jobId> "Review findings: 1) <file:line> <problem> -> <fix>. 2) ... Fix these, keep everything else unchanged."
+codex-agent await-turn <jobId>
+git diff                          # re-review
+```
+
+**Optional second opinion** for large/sensitive changes - spawn a read-only Codex reviewer in parallel with your own review, then reconcile its findings with yours:
+
+```bash
+codex-agent start "Review git diff main...HEAD for security, error handling and data integrity. Report findings with file:line. Do not modify files." --map -s read-only
+```
+
+**After review:**
+- Every critical issue fixed and re-reviewed before commit
+- Non-critical issues noted for the user
+- Summarize what you reviewed and what changed for the user's final approval
 
 ### Stage 7: Testing (Codex Agents - workspace-write)
 
@@ -687,7 +702,8 @@ codex-agent send $jobC "/quit"
 # Phase 1
 codex-agent start "Implement Phase 1 of PRD" --map       # -> job1
 codex-agent await-turn $job1                              # blocks until done
-codex-agent status $job1                                  # review result
+codex-agent status $job1                                  # check result
+git diff                                                  # YOU review the diff (Rule 4)
 codex-agent send $job1 "/quit"
 
 # Phase 2 (after Phase 1 verified)
@@ -707,7 +723,7 @@ Before marking any stage complete:
 | Synthesis | Clear understanding, contradictions resolved |
 | PRD | User reviewed and approved |
 | Implementation | Typecheck passes, no new errors |
-| Review | Security + quality checks pass |
+| Review | Claude reviewed the full diff; critical issues fixed and re-reviewed |
 | Testing | Tests written and passing |
 
 ## Error Recovery

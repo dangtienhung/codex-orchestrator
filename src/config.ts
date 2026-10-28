@@ -2,11 +2,11 @@
 
 export const config = {
   // Default model
-  model: "gpt-5.5",
+  model: "cx/gpt-6.1-sol",
 
   // Reasoning effort levels
   reasoningEfforts: ["low", "medium", "high", "xhigh"] as const,
-  defaultReasoningEffort: "low" as const,
+  defaultReasoningEffort: "high" as const,
 
   // Sandbox modes
   sandboxModes: ["read-only", "workspace-write", "danger-full-access"] as const,
